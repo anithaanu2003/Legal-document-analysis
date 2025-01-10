@@ -1,0 +1,111 @@
+!pip install pdfplumber
+import os
+import re
+import string
+import pandas as pd
+import nltk
+from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pdfplumber
+
+# Ensure necessary NLTK resources are downloaded
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('maxent_ne_chunker')
+nltk.download('words')
+
+# Function to clean the text
+def clean_text(text):
+    # Remove special characters except for legal-relevant symbols (e.g., colons, hyphens, periods)
+    text = re.sub(r'[^\w\s\.\-:]', '', text)  
+    text = text.lower()  # Convert to lowercase
+    return text
+
+# Function to tokenize and remove stopwords
+def tokenize_text(text):
+    tokens = word_tokenize(text)
+    stop_words = set(stopwords.words('english'))
+    filtered_tokens = [word for word in tokens if word not in stop_words]
+    return filtered_tokens
+
+# Function for lemmatization
+def lemmatize_words(tokens):
+    lemmatizer = WordNetLemmatizer()
+    lemmatized_words = [lemmatizer.lemmatize(token) for token in tokens]
+    return lemmatized_words
+
+# Function for Named Entity Recognition (NER)
+def perform_ner(text):
+    tokens = nltk.word_tokenize(text)
+    pos_tags = nltk.pos_tag(tokens)
+    named_entities = nltk.ne_chunk(pos_tags)
+    return named_entities
+
+# Function to extract legal keywords
+def extract_legal_keywords(text, top_n=10):
+    vectorizer = TfidfVectorizer(max_features=top_n, ngram_range=(1, 2))
+    X = vectorizer.fit_transform([text])
+    keywords = vectorizer.get_feature_names_out()
+    return keywords
+
+# Function to split the document into sections
+def split_into_sections(text):
+    # Assuming sections are marked with "Section X."
+    sections = re.split(r'Section \d+[A-Z]*\.', text)
+    return sections
+
+def extract_text_from_pdf(file_path):
+  text = ""
+  with pdfplumber.open(file_path) as pdf:
+    for page in pdf.pages:
+      text += page.extract_text()
+  return text
+
+# Function to preprocess legal documents
+def preprocess_document(file_path):
+    
+    document_text = extract_text_from_pdf(file_path)
+
+    # Cleaning and normalizing text while preserving critical legal punctuation
+    cleaned_text = clean_text(document_text)
+
+    # Split document into sections based on "Section X." pattern
+    sections = split_into_sections(cleaned_text)
+
+    # Tokenizing, lemmatizing, performing NER, and extracting keywords from each section
+    all_tokens, all_lemmatized_tokens, all_named_entities, all_keywords = [], [], [], []
+    for section in sections:
+        if section.strip():  # Skip empty sections
+            # Tokenization
+            tokens = tokenize_text(section)
+            lemmatized_tokens = lemmatize_words(tokens)
+
+            # Named Entity Recognition
+            named_entities = perform_ner(section)
+
+            # Extract legal keywords
+            keywords = extract_legal_keywords(section)
+
+            # Collect results
+            all_tokens.append(tokens)
+            all_lemmatized_tokens.append(lemmatized_tokens)
+            all_named_entities.append(named_entities)
+            all_keywords.append(keywords)
+
+    return {
+        'sections': sections,
+        'tokens': all_tokens,
+        'lemmatized_tokens': all_lemmatized_tokens,
+        'named_entities': all_named_entities,
+        'keywords': all_keywords
+    }
+
+# Example Usage
+if __name__== "__main__":
+    file_path = "/content/sample_data/Law relating  to Bail.pdf"  # Replace with the actual path to your legal document
+    result = preprocess_document(file_path)
+    print(result)
